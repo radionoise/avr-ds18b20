@@ -78,15 +78,15 @@ bool ds18b20IsPresent(Ds18b20Port *port) {
 
 void ds18b20SendBitData(uint64_t bit, uint8_t index, Ds18b20Port *port) {
     cli();
-    if ((bit >> index) & 1 == 1) {
-        ds18b20SetOutput(port);
+    if ((bit >> index) & 1) {
         ds18b20ClearBit(port);
+        ds18b20SetOutput(port);
         _delay_us(15);
         ds18b20SetBit(port);
         _delay_us(46);
     } else {
-        ds18b20SetOutput(port);
         ds18b20ClearBit(port);
+        ds18b20SetOutput(port);
         _delay_us(120);
         ds18b20SetBit(port);
         _delay_us(1);
@@ -108,11 +108,10 @@ void ds18b20SendCommand(uint8_t command, Ds18b20Port *port) {
 
 uint8_t ds18b20ReadBitData(Ds18b20Port *port) {
     cli();
-    ds18b20SetOutput(port);
     ds18b20ClearBit(port);
+    ds18b20SetOutput(port);
     _delay_us(15);
     ds18b20SetInput(port);
-    ds18b20ClearBit(port);
     uint8_t bit = ds18b20ReadBit(port);
     _delay_us(46);
     sei();
