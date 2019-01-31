@@ -1,5 +1,6 @@
 /*
  * DS18B20 temperature sensor library for AVR.
+ * Version 2.0.0
  */
 
 #ifndef AVR_DS18B20_DS18B20_H
