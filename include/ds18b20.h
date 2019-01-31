@@ -8,9 +8,14 @@
 #include <avr/io.h>
 #include <stdbool.h>
 
-#define DS18B20_NOT_FOUND_ROM 0
-#define DS18B20_ROM_CRC_ERROR (0xffffffffffffffff)
-#define DS18B20_TEMPERATURE_CRC_ERROR 999
+// Error values
+#define DS18B20_ERROR_ROM_NOT_FOUND 0
+#define DS18B20_ERROR_ROM_CRC (0xffffffffffffffff)
+#define DS18B20_ERROR_TEMPERATURE_CRC 999
+
+// Error codes
+#define DS18B20_SCRATCHPAD_OK 0
+#define DS18B20_ERROR_SCRATCHPAD_CRC 1
 
 typedef struct Ds18b20Port {
     volatile uint8_t * avrDdrPort;
@@ -86,13 +91,13 @@ float ds18b20ReadTemperatureSkipRom(Ds18b20Port *port);
 /*
  * Reads device configuration such as resolution, TH and TL alarm thresholds.
  */
-Ds18b20Scratchpad *ds18b20ReadScratchpadMatchRom(uint64_t rom, Ds18b20Port *port);
+uint8_t ds18b20ReadScratchpadMatchRom(uint64_t rom, Ds18b20Scratchpad *scratchpad, Ds18b20Port *port);
 
 /*
  * Reads device configuration such as resolution, TH and TL alarm thresholds.
  * This function can only be used when one device is present on 1-Wire bus.
  */
-Ds18b20Scratchpad *ds18b20ReadScratchpadSkipRom(Ds18b20Port *port);
+uint8_t ds18b20ReadScratchpadSkipRom(Ds18b20Scratchpad *scratchpad, Ds18b20Port *port);
 
 /*
  * Writes device configuration such as resolution, TH and TL alarm thresholds.

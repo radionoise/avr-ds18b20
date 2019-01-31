@@ -142,7 +142,7 @@ uint64_t ds18b20ReadRom(Ds18b20Port *port) {
     if (ds18b20CheckRomCrc(data)) {
         return data;
     } else {
-        return (uint64_t) DS18B20_ROM_CRC_ERROR;
+        return (uint64_t) DS18B20_ERROR_ROM_CRC;
     }
 }
 
@@ -217,14 +217,14 @@ void ds18b20Search(uint8_t command, uint64_t *buffer, uint8_t bufferSize, Ds18b2
                     cbi64Bit(rom, index);
                     break;
                 case 3:
-                    buffer[deviceCount] = DS18B20_NOT_FOUND_ROM;
+                    buffer[deviceCount] = DS18B20_ERROR_ROM_NOT_FOUND;
             }
         }
 
         if (ds18b20CheckRomCrc(rom)) {
             buffer[deviceCount] = rom;
         } else {
-            buffer[deviceCount] = DS18B20_ROM_CRC_ERROR;
+            buffer[deviceCount] = DS18B20_ERROR_ROM_CRC;
         }
     }
 }
@@ -258,9 +258,7 @@ void ds18b20MatchOrSkipRom(uint64_t *rom, Ds18b20Port *port) {
     }
 }
 
-Ds18b20ScratchpadFull* ds18b20ReadScratchpadFull(uint64_t *rom, Ds18b20Port *port) {
-    Ds18b20ScratchpadFull *scratchpad = malloc(sizeof(Ds18b20ScratchpadFull));
-
+void ds18b20ReadScratchpadFull(uint64_t *rom, Ds18b20ScratchpadFull *scratchpad, Ds18b20Port *port) {
     ds18b20Reset(port);
     ds18b20MatchOrSkipRom(rom, port);
     ds18b20SendCommand(READ_SCRATCHPAD_COMMAND, port);
@@ -279,8 +277,6 @@ Ds18b20ScratchpadFull* ds18b20ReadScratchpadFull(uint64_t *rom, Ds18b20Port *por
 
     scratchpad->data = data;
     scratchpad->crc = crc;
-
-    return scratchpad;
 }
 
 int8_t ds18b20Parse8BitTemperature(uint8_t temperature) {
@@ -326,20 +322,17 @@ float ds18b20ReadTemperature(uint64_t *rom, Ds18b20Port *port) {
 
     while (readAttemptsLeft > 0) {
         ds18b20ConvertT(rom, port);
-        Ds18b20ScratchpadFull *scratchpad = ds18b20ReadScratchpadFull(rom, port);
+        Ds18b20ScratchpadFull scratchpad;
+        ds18b20ReadScratchpadFull(rom, &scratchpad, port);
 
-        if (ds18b20CheckScratchpadCrc(scratchpad->data, scratchpad->crc)) {
-            float temperature = ds18b20Parse16BitTemperature((uint16_t) scratchpad->data);
-            free(scratchpad);
-            return temperature;
-        } else {
-            free(scratchpad);
+        if (ds18b20CheckScratchpadCrc(scratchpad.data, scratchpad.crc)) {
+            return ds18b20Parse16BitTemperature((uint16_t) scratchpad.data);
         }
 
         readAttemptsLeft--;
     }
 
-    return DS18B20_TEMPERATURE_CRC_ERROR;
+    return DS18B20_ERROR_TEMPERATURE_CRC;
 }
 
 float ds18b20ReadTemperatureMatchRom(uint64_t rom, Ds18b20Port *port) {
@@ -351,10 +344,11 @@ float ds18b20ReadTemperatureSkipRom(Ds18b20Port *port) {
 }
 
 Ds18b20Resolution ds18b20ReadResolution(uint64_t *rom, Ds18b20Port *port) {
-    Ds18b20ScratchpadFull *scratchpad = ds18b20ReadScratchpadFull(rom, port);
+    Ds18b20ScratchpadFull scratchpad;
+    ds18b20ReadScratchpadFull(rom, &scratchpad, port);
 
-    uint8_t resolutionBits = (scratchpad->data >> 37) & 3;
-    free(scratchpad);
+    uint8_t resolutionBits = (scratchpad.data >> 37) & 3;
+
     switch (resolutionBits) {
         case 0:
             return DS18B20_NINE;
@@ -369,24 +363,23 @@ Ds18b20Resolution ds18b20ReadResolution(uint64_t *rom, Ds18b20Port *port) {
     }
 }
 
-Ds18b20Scratchpad *ds18b20ReadScratchpad(uint64_t *rom, Ds18b20Port *port) {
+uint8_t ds18b20ReadScratchpad(uint64_t *rom, Ds18b20Scratchpad *scratchpad, Ds18b20Port *port) {
     uint8_t readAttemptsLeft = READ_SCRATCHPAD_ATTEMPTS;
 
     while (readAttemptsLeft > 0) {
-        Ds18b20ScratchpadFull *scratchpad = ds18b20ReadScratchpadFull(rom, port);
+        Ds18b20ScratchpadFull scratchpadFull;
+        ds18b20ReadScratchpadFull(rom, &scratchpadFull, port);
 
-        if (ds18b20CheckScratchpadCrc(scratchpad->data, scratchpad->crc)) {
-            Ds18b20Scratchpad *configuration = malloc(sizeof(Ds18b20Scratchpad));
+        if (ds18b20CheckScratchpadCrc(scratchpadFull.data, scratchpadFull.crc)) {
+            uint8_t thByte = scratchpadFull.data >> 16;
+            uint8_t tlByte = scratchpadFull.data >> 24;
 
-            uint8_t thByte = scratchpad->data >> 16;
-            uint8_t tlByte = scratchpad->data >> 24;
-
-            configuration->highTempThreshold = ds18b20Parse8BitTemperature(thByte);
-            configuration->lowTempThreshold = ds18b20Parse8BitTemperature(tlByte);
+            scratchpad->highTempThreshold = ds18b20Parse8BitTemperature(thByte);
+            scratchpad->lowTempThreshold = ds18b20Parse8BitTemperature(tlByte);
 
             Ds18b20Resolution resolution;
 
-            switch ((scratchpad->data >> 37) & 3) {
+            switch ((scratchpadFull.data >> 37) & 3) {
                 case 0:
                     resolution = DS18B20_NINE;
                     break;
@@ -403,25 +396,23 @@ Ds18b20Scratchpad *ds18b20ReadScratchpad(uint64_t *rom, Ds18b20Port *port) {
                     resolution = 0;
             }
 
-            configuration->resolution = resolution;
+            scratchpad->resolution = resolution;
 
-            return configuration;
+            return DS18B20_SCRATCHPAD_OK;
         }
-
-        free(scratchpad);
 
         readAttemptsLeft--;
     }
 
-    return NULL;
+    return DS18B20_ERROR_SCRATCHPAD_CRC;
 }
 
-Ds18b20Scratchpad *ds18b20ReadScratchpadMatchRom(uint64_t rom, Ds18b20Port *port) {
-    return ds18b20ReadScratchpad(&rom, port);
+uint8_t ds18b20ReadScratchpadMatchRom(uint64_t rom, Ds18b20Scratchpad *scratchpad, Ds18b20Port *port) {
+    return ds18b20ReadScratchpad(&rom, scratchpad, port);
 }
 
-Ds18b20Scratchpad *ds18b20ReadScratchpadSkipRom(Ds18b20Port *port) {
-    return ds18b20ReadScratchpad(NULL, port);
+uint8_t ds18b20ReadScratchpadSkipRom(Ds18b20Scratchpad *scratchpad, Ds18b20Port *port) {
+    return ds18b20ReadScratchpad(NULL, scratchpad, port);
 }
 
 void ds18b20WriteScratchpad(Ds18b20Scratchpad *configuration, uint64_t *rom, Ds18b20Port *port) {
