@@ -1,6 +1,7 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
 #include <util/crc16.h>
+#include <util/atomic.h>
 #include <stdlib.h>
 #include "ds18b20.h"
 
@@ -58,16 +59,20 @@ bool ds18b20Reset(Ds18b20Port *port) {
     ds18b20SetOutput(port);
     ds18b20SetBit(port);
     _delay_ms(1);
-    cli();
-    ds18b20ClearBit(port);
-    _delay_us(480);
-    ds18b20SetInput(port);
-    _delay_us(60);
-    uint8_t bit0 = ds18b20ReadBit(port);
-    _delay_us(200);
-    uint8_t bit1 = ds18b20ReadBit(port);
-    _delay_us(220);
-    sei();
+
+    uint8_t bit0;
+    uint8_t bit1;
+
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+        ds18b20ClearBit(port);
+        _delay_us(480);
+        ds18b20SetInput(port);
+        _delay_us(60);
+        bit0 = ds18b20ReadBit(port);
+        _delay_us(200);
+        bit1 = ds18b20ReadBit(port);
+        _delay_us(220);
+    }
 
     return (!bit0 && bit1);
 }
@@ -77,21 +82,21 @@ bool ds18b20IsPresent(Ds18b20Port *port) {
 }
 
 void ds18b20SendBitData(uint64_t bit, uint8_t index, Ds18b20Port *port) {
-    cli();
-    if ((bit >> index) & 1) {
-        ds18b20ClearBit(port);
-        ds18b20SetOutput(port);
-        _delay_us(15);
-        ds18b20SetBit(port);
-        _delay_us(46);
-    } else {
-        ds18b20ClearBit(port);
-        ds18b20SetOutput(port);
-        _delay_us(120);
-        ds18b20SetBit(port);
-        _delay_us(1);
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+        if ((bit >> index) & 1) {
+            ds18b20ClearBit(port);
+            ds18b20SetOutput(port);
+            _delay_us(15);
+            ds18b20SetBit(port);
+            _delay_us(46);
+        } else {
+            ds18b20ClearBit(port);
+            ds18b20SetOutput(port);
+            _delay_us(120);
+            ds18b20SetBit(port);
+            _delay_us(1);
+        }
     }
-    sei();
 }
 
 void ds18b20SendRom(uint64_t rom, Ds18b20Port *port) {
@@ -107,14 +112,16 @@ void ds18b20SendCommand(uint8_t command, Ds18b20Port *port) {
 }
 
 uint8_t ds18b20ReadBitData(Ds18b20Port *port) {
-    cli();
-    ds18b20ClearBit(port);
-    ds18b20SetOutput(port);
-    _delay_us(15);
-    ds18b20SetInput(port);
-    uint8_t bit = ds18b20ReadBit(port);
-    _delay_us(46);
-    sei();
+    uint8_t bit;
+
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+        ds18b20ClearBit(port);
+        ds18b20SetOutput(port);
+        _delay_us(15);
+        ds18b20SetInput(port);
+        bit = ds18b20ReadBit(port);
+        _delay_us(46);
+    }
 
     return bit;
 }
@@ -487,7 +494,7 @@ Ds18b20PowerMode ds18b20ReadPowerSupply(uint64_t *rom, Ds18b20Port *port) {
 }
 
 Ds18b20PowerMode ds18b20ReadPowerSupplyMatchRom(uint64_t rom, Ds18b20Port *port) {
-    ds18b20ReadPowerSupply(&rom, port);
+    return ds18b20ReadPowerSupply(&rom, port);
 }
 
 Ds18b20PowerMode ds18b20ReadPowerSupplySkipRom(Ds18b20Port *port) {
